@@ -1,0 +1,6 @@
+{
+  "name": "MonoDoc",
+  "description": "Convert web pages and repositories to Markdown",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
