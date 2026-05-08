@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Loader2, Copy, Check, Download, Sun, Moon, FolderOpen, Settings, X } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import ignore from 'ignore';
@@ -139,6 +139,7 @@ const generateDirectoryTree = (paths: string[]): string => {
 export default function App() {
   const { resolvedTheme, setTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
+  const resultsRef = useRef<HTMLDivElement>(null); // Added for auto-scroll
   const [mounted, setMounted] = useState(false);
   const [displayedText, setDisplayedText] = useState('');
   const texts = [
@@ -317,7 +318,8 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'repository.md';
+    // Uses the actual repository name, fallbacks to repository.md just in case
+    a.download = repoInfo?.repoName ? `${repoInfo.repoName}.md` : 'repository.md';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -365,6 +367,11 @@ export default function App() {
         repoName: data.data.repoName,
         branch: data.data.branch
       });
+      
+      // Auto-scroll to results after DOM updates
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
     } finally {
@@ -463,6 +470,11 @@ export default function App() {
         branch: 'local-machine'
       });
 
+      // Auto-scroll to results after DOM updates
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+
     } catch (err: any) {
       setError(err.message || 'Error reading local files.');
     } finally {
@@ -500,7 +512,8 @@ export default function App() {
               MonoDoc
             </span>
           </h1>
-          <p className="text-lg md:text-xl text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
+          {/* Added specific height classes (h-24 sm:h-20 md:h-16) to prevent layout shift during the typewriter effect */}
+          <p className="text-lg md:text-xl text-gray-500 dark:text-gray-400 max-w-2xl mx-auto h-24 sm:h-20 md:h-16">
             <span>{displayedText}</span>
             <span className="text-indigo-500 animate-pulse ml-1">|</span>
           </p>
@@ -621,7 +634,8 @@ export default function App() {
         )}
 
         {/* Output Area or Dashboard */}
-        {fetchedFiles.length > 0 && repoInfo ? (
+        <div ref={resultsRef} className="w-full scroll-mt-6 flex flex-col">
+          {fetchedFiles.length > 0 && repoInfo ? (
           showMarkdown ? (
             <div className="flex-1 flex flex-col min-h-[500px] mt-2 mb-8">
               <div className="flex justify-between items-center mb-4">
@@ -775,6 +789,7 @@ export default function App() {
             </div>
           )
         ) : null}
+        </div> {/* <-- ADD THIS CLOSING DIV HERE */}
       </div>
 
       {/* Settings Modal */}
