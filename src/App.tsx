@@ -7,6 +7,10 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Loader2, Copy, Check, Download, Sun, Moon, FolderOpen, Settings, X } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import ignore from 'ignore';
+import { getEncoding } from 'js-tiktoken';
+
+// Initialize tiktoken encoder outside the component
+const encoder = getEncoding("cl100k_base");
 
 interface RepoFile {
   path: string;
@@ -47,6 +51,16 @@ const stripComments = (text: string, ext: string): string => {
   }
 
   return text; // Default: return unmodified if unknown language
+};
+
+const injectLineNumbers = (text: string): string => {
+  if (!text) return text;
+  const lines = text.split('\n');
+  const maxDigits = String(lines.length).length;
+  return lines.map((line, index) => {
+    const lineNumber = String(index + 1).padStart(maxDigits, ' ');
+    return `${lineNumber} | ${line}`;
+  }).join('\n');
 };
 
 const DEFAULT_IGNORE_CATEGORIES = [
@@ -220,15 +234,17 @@ export default function App() {
   const [includeDirectoryStructure, setIncludeDirectoryStructure] = useState(true);
   const [removeEmptyLines, setRemoveEmptyLines] = useState(true);
   const [removeComments, setRemoveComments] = useState(true);
+  const [addLineNumbers, setAddLineNumbers] = useState(false);
+  const [outputFormat, setOutputFormat] = useState<'markdown' | 'xml'>('markdown'); // Added output format state
 
   const stats = useMemo(() => {
     let totalSize = 0;
+    let totalTokens = 0;
     const selectedFiles = fetchedFiles.filter(f => selectedFilePaths.includes(f.path));
     for (const file of selectedFiles) {
       totalSize += file.content.length;
+      totalTokens += encoder.encode(file.content).length; // Accurate token count
     }
-    const totalTokens = Math.ceil(totalSize / 4);
-    
     return {
       totalFiles: selectedFiles.length,
       totalTokens,
@@ -236,70 +252,64 @@ export default function App() {
     };
   }, [fetchedFiles, selectedFilePaths]);
 
-  const generateMarkdownPreview = (selectedFilesArray: RepoFile[]) => {
-    let md = '';
+  const generateOutput = (selectedFilesArray: RepoFile[]) => {
+    let output = '';
 
-    if (includeDirectoryStructure) {
-      md += `## Directory Structure\n\n\`\`\`text\n`;
-      md += generateDirectoryTree(selectedFilesArray.map(f => f.path));
-      md += `\`\`\`\n\n`;
+    if (outputFormat === 'markdown') {
+      if (includeDirectoryStructure) {
+        output += `## Directory Structure\n\n\`\`\`text\n`;
+        output += generateDirectoryTree(selectedFilesArray.map(f => f.path));
+        output += `\`\`\`\n\n`;
+      }
+      const extensionToLanguage: Record<string, string> = {
+        '.js': 'javascript', '.jsx': 'javascript', '.ts': 'typescript', '.tsx': 'typescript',
+        '.py': 'python', '.rs': 'rust', '.go': 'go', '.java': 'java', '.cpp': 'cpp', '.hpp': 'cpp',
+        '.c': 'c', '.h': 'c', '.html': 'html', '.css': 'css', '.json': 'json', '.md': 'markdown',
+        '.sh': 'bash', '.yaml': 'yaml', '.yml': 'yaml', '.xml': 'xml', '.sql': 'sql', '.rb': 'ruby',
+        '.php': 'php', '.swift': 'swift', '.kt': 'kotlin'
+      };
+      for (const file of selectedFilesArray) {
+        const extMatch = file.path.match(/\.[^.]+$/);
+        const ext = extMatch ? extMatch[0].toLowerCase() : '';
+        const lang = extensionToLanguage[ext] || '';
+        let finalContent = file.content;
+        if (removeComments) finalContent = stripComments(finalContent, ext);
+        if (removeEmptyLines) finalContent = stripEmptyLines(finalContent);
+        if (addLineNumbers) finalContent = injectLineNumbers(finalContent);
+        output += `### ${file.path}\n\n\`\`\`${lang}\n${finalContent}\n\`\`\`\n\n`;
+      }
+    } else if (outputFormat === 'xml') {
+      output += `<?xml version="1.0" encoding="UTF-8"?>\n<repository>\n`;
+      if (includeDirectoryStructure) {
+        output += `  <directory_structure>\n<![CDATA[\n${generateDirectoryTree(selectedFilesArray.map(f => f.path))}\n]]>\n  </directory_structure>\n`;
+      }
+      output += `  <files>\n`;
+      for (const file of selectedFilesArray) {
+        const extMatch = file.path.match(/\.[^.]+$/);
+        const ext = extMatch ? extMatch[0].toLowerCase() : '';
+        let finalContent = file.content;
+        if (removeComments) finalContent = stripComments(finalContent, ext);
+        if (removeEmptyLines) finalContent = stripEmptyLines(finalContent);
+        if (addLineNumbers) finalContent = injectLineNumbers(finalContent);
+        
+        // Escape existing CDATA closing tags in the source code to prevent XML breakage
+        const safeContent = finalContent.replace(/]]>/g, ']]]]><![CDATA[>');
+        output += `    <file path="${file.path}">\n<![CDATA[\n${safeContent}\n]]>\n    </file>\n`;
+      }
+      output += `  </files>\n</repository>\n`;
     }
 
-    const extensionToLanguage: Record<string, string> = {
-      '.js': 'javascript',
-      '.jsx': 'javascript',
-      '.ts': 'typescript',
-      '.tsx': 'typescript',
-      '.py': 'python',
-      '.rs': 'rust',
-      '.go': 'go',
-      '.java': 'java',
-      '.cpp': 'cpp',
-      '.hpp': 'cpp',
-      '.c': 'c',
-      '.h': 'c',
-      '.html': 'html',
-      '.css': 'css',
-      '.json': 'json',
-      '.md': 'markdown',
-      '.sh': 'bash',
-      '.yaml': 'yaml',
-      '.yml': 'yaml',
-      '.xml': 'xml',
-      '.sql': 'sql',
-      '.rb': 'ruby',
-      '.php': 'php',
-      '.swift': 'swift',
-      '.kt': 'kotlin'
-    };
-
-    for (const file of selectedFilesArray) {
-      const extMatch = file.path.match(/\.[^.]+$/);
-      const ext = extMatch ? extMatch[0].toLowerCase() : '';
-      const lang = extensionToLanguage[ext] || '';
-      
-      let finalContent = file.content;
-      if (removeComments) {
-        finalContent = stripComments(finalContent, ext);
-      }
-      if (removeEmptyLines) {
-        finalContent = stripEmptyLines(finalContent);
-      }
-
-      md += `### ${file.path}\n\n\`\`\`${lang}\n${finalContent}\n\`\`\`\n\n`;
-    }
-    
-    setFinalMarkdown(md);
+    setFinalMarkdown(output);
   };
 
   React.useEffect(() => {
     const selectedFiles = fetchedFiles.filter(f => selectedFilePaths.includes(f.path));
     if (selectedFiles.length > 0) {
-      generateMarkdownPreview(selectedFiles);
+      generateOutput(selectedFiles);
     } else {
       setFinalMarkdown('');
     }
-  }, [fetchedFiles, selectedFilePaths, includeDirectoryStructure, removeEmptyLines, removeComments]);
+  }, [fetchedFiles, selectedFilePaths, includeDirectoryStructure, removeEmptyLines, removeComments, outputFormat, addLineNumbers]);
 
   const handleCopy = async () => {
     if (!finalMarkdown) return;
@@ -314,12 +324,13 @@ export default function App() {
 
   const handleDownload = () => {
     if (!finalMarkdown) return;
-    const blob = new Blob([finalMarkdown], { type: 'text/markdown' });
+    const mimeType = outputFormat === 'xml' ? 'application/xml' : 'text/markdown';
+    const ext = outputFormat === 'xml' ? '.xml' : '.md';
+    const blob = new Blob([finalMarkdown], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    // Uses the actual repository name, fallbacks to repository.md just in case
-    a.download = repoInfo?.repoName ? `${repoInfo.repoName}.md` : 'repository.md';
+    a.download = repoInfo?.repoName ? `${repoInfo.repoName}${ext}` : `repository${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -585,6 +596,20 @@ export default function App() {
 
           {/* Output Configuration Toggles */}
           <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm flex flex-col sm:flex-row flex-wrap gap-4 sm:gap-8 justify-center items-center">
+            {/* Format Selector */}
+            <div className="flex items-center space-x-3 pr-4 sm:border-r border-gray-200 dark:border-gray-700">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Format:</span>
+              <select
+                value={outputFormat}
+                onChange={(e) => setOutputFormat(e.target.value as 'markdown' | 'xml')}
+                title="Select Output Format"
+                className="text-sm bg-gray-50 dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-700 dark:text-gray-300 cursor-pointer"
+              >
+                <option value="markdown">Markdown (.md)</option>
+                <option value="xml">XML (.xml)</option>
+              </select>
+            </div>
+            
             <label className="flex items-center space-x-3 cursor-pointer group">
               <div className="relative flex items-center justify-center">
                 <input
@@ -622,6 +647,19 @@ export default function App() {
                 <Check className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" strokeWidth={3} />
               </div>
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white transition-colors">Remove Comments</span>
+            </label>
+
+            <label className="flex items-center space-x-3 cursor-pointer group">
+              <div className="relative flex items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={addLineNumbers}
+                  onChange={(e) => setAddLineNumbers(e.target.checked)}
+                  className="peer appearance-none w-5 h-5 border border-gray-300 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-900 rounded checked:bg-indigo-600 checked:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#1E1E1E] transition-all"
+                />
+                <Check className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" strokeWidth={3} />
+              </div>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white transition-colors">Add Line Numbers</span>
             </label>
           </div>
         </div>
@@ -666,11 +704,11 @@ export default function App() {
                   <button
                     onClick={handleDownload}
                     className="inline-flex justify-center items-center rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-700 dark:text-white px-3 sm:px-6 py-3 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
-                    title="Download .md file"
+                    title={`Download .${outputFormat === 'xml' ? 'xml' : 'md'} file`}
                   >
                     <Download className="w-4 h-4 sm:mr-2 text-gray-500 dark:text-neutral-400" />
-                    <span className="hidden sm:inline">Download .md file</span>
-                    <span className="sm:hidden font-mono text-xs">.md</span>
+                    <span className="hidden sm:inline">Download .{outputFormat === 'xml' ? 'xml' : 'md'} file</span>
+                    <span className="sm:hidden font-mono text-xs">.{outputFormat === 'xml' ? 'xml' : 'md'}</span>
                   </button>
                 </div>
               </div>
@@ -682,7 +720,7 @@ export default function App() {
                   id="markdown-output"
                   value={finalMarkdown}
                   readOnly
-                  placeholder="Markdown output will appear here..."
+                  placeholder={`${outputFormat === 'xml' ? 'XML' : 'Markdown'} output will appear here...`}
                   className="absolute inset-0 w-full h-full rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-[#1E1E1E] px-6 py-5 text-gray-800 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm leading-relaxed resize-none transition-colors shadow-sm"
                 />
               </div>
