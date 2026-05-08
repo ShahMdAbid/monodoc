@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Loader2, Copy, Check, Download, Sun, Moon } from 'lucide-react';
+import { Loader2, Copy, Check, Download, Sun, Moon, FolderOpen, Settings, X } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import ignore from 'ignore';
 
 interface RepoFile {
   path: string;
@@ -18,10 +19,90 @@ const stripEmptyLines = (text: string): string => {
   return text.replace(/^\s*[\r\n]/gm, '');
 };
 
-const stripComments = (text: string): string => {
-  if (!text) return '';
-  return text.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '');
+const stripComments = (text: string, ext: string): string => {
+  if (!text) return text;
+  const lowerExt = ext.toLowerCase();
+
+  // 1. C-Style (JS, TS, Java, C, C++, C#, Go, Rust, Swift, PHP)
+  if (['.js', '.jsx', '.ts', '.tsx', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.swift', '.php'].includes(lowerExt)) {
+    // Removes /* ... */ and // ... but smartly IGNORES http:// and https://
+    return text.replace(/\/\*[\s\S]*?\*\/|(?<!https?:|http:)\/\/.*/g, '');
+  }
+
+  // 2. Hash-Style (Python, Ruby, Shell, YAML, Dockerfile, Perl)
+  if (['.py', '.rb', '.sh', '.yaml', '.yml', '.dockerfile', '.pl'].includes(lowerExt)) {
+    // Removes # comments
+    return text.replace(/(?<!['"]\s*)#.*/g, ''); 
+  }
+
+  // 3. HTML / XML / Markdown / Vue / Svelte
+  if (['.html', '.xml', '.md', '.vue', '.svelte'].includes(lowerExt)) {
+    // Removes <!-- ... -->
+    return text.replace(/<!--[\s\S]*?-->/g, '');
+  }
+
+  // 4. CSS
+  if (['.css'].includes(lowerExt)) {
+    return text.replace(/\/\*[\s\S]*?\*\//g, '');
+  }
+
+  return text; // Default: return unmodified if unknown language
 };
+
+const DEFAULT_IGNORE_CATEGORIES = [
+  {
+    category: "Dependency Directories",
+    rules: [
+      { id: "node_modules", patterns: ["node_modules/"], label: "Node.js (node_modules/)", enabled: true },
+      { id: "python_env", patterns: ["venv/", ".venv/", "env/", "__pycache__/"], label: "Python (venv, __pycache__)", enabled: true },
+      { id: "rust_target", patterns: ["target/"], label: "Rust (target/)", enabled: true },
+      { id: "java_build", patterns: [".gradle/", "build/"], label: "Java (.gradle/, build/)", enabled: true }
+    ]
+  },
+  {
+    category: "Environment Variables & Secrets",
+    rules: [
+      { id: "env_files", patterns: [".env", ".env.*"], label: "Environment Files (.env*)", enabled: true },
+      { id: "secrets", patterns: ["*.pem", "credentials.json"], label: "Keys & Credentials", enabled: true }
+    ]
+  },
+  {
+    category: "Build & Compiled Output",
+    rules: [
+      { id: "web_build", patterns: ["dist/", "build/", ".next/", ".out/"], label: "Web Builds (dist, .next)", enabled: true },
+      { id: "compiled", patterns: ["*.o", "*.exe", "*.out", "*.class", "*.jar"], label: "Compiled Binaries", enabled: true },
+      { id: "logs", patterns: ["*.log", "npm-debug.log*"], label: "Log Files", enabled: true }
+    ]
+  },
+  {
+    category: "OS & IDE Specific Files",
+    rules: [
+      { id: "mac_windows", patterns: [".DS_Store", "Thumbs.db", "desktop.ini"], label: "OS System Files", enabled: true },
+      { id: "ides", patterns: [".vscode/", ".idea/", "*~", "*.swp"], label: "IDE Configurations", enabled: true }
+    ]
+  },
+  {
+    category: "Local Database & Storage",
+    rules: [
+      { id: "databases", patterns: ["*.sqlite", "*.db"], label: "Local Databases", enabled: true },
+      { id: "uploads", patterns: ["public/uploads/", "storage/"], label: "Uploads & Storage", enabled: true }
+    ]
+  },
+  {
+    category: "Version Control & CI/CD",
+    rules: [
+      { id: "git_internal", patterns: [".git/"], label: "Git Internals (.git/)", enabled: true },
+      { id: "github_actions", patterns: [".github/"], label: "GitHub Actions (.github/)", enabled: true }
+    ]
+  },
+  {
+    category: "Tools & Assets",
+    rules: [
+      { id: "coverage", patterns: ["coverage/"], label: "Coverage Reports", enabled: true },
+      { id: "docs_temp", patterns: ["docs/_build/", "tmp/", "temp/"], label: "Temp & Doc Builds", enabled: true }
+    ]
+  }
+];
 
 const generateDirectoryTree = (paths: string[]): string => {
   if (!paths || paths.length === 0) return '';
@@ -111,6 +192,26 @@ export default function App() {
   const [fetchedFiles, setFetchedFiles] = useState<RepoFile[]>([]);
   const [repoInfo, setRepoInfo] = useState<{ owner: string; repoName: string; branch: string } | null>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [ignoreCategories, setIgnoreCategories] = useState(DEFAULT_IGNORE_CATEGORIES);
+
+  // Helper to extract a flat list of patterns from checked rules
+  const getActiveIgnorePatterns = () => {
+    return ignoreCategories
+      .flatMap(cat => cat.rules)
+      .filter(rule => rule.enabled)
+      .flatMap(rule => rule.patterns);
+  };
+
+  const toggleIgnoreRule = (categoryId: string, ruleId: string) => {
+    setIgnoreCategories(prev => prev.map(cat => {
+      if (cat.category !== categoryId) return cat;
+      return {
+        ...cat,
+        rules: cat.rules.map(rule => rule.id === ruleId ? { ...rule, enabled: !rule.enabled } : rule)
+      };
+    }));
+  };
   const [selectedFilePaths, setSelectedFilePaths] = useState<string[]>([]);
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [finalMarkdown, setFinalMarkdown] = useState('');
@@ -178,7 +279,7 @@ export default function App() {
       
       let finalContent = file.content;
       if (removeComments) {
-        finalContent = stripComments(finalContent);
+        finalContent = stripComments(finalContent, ext);
       }
       if (removeEmptyLines) {
         finalContent = stripEmptyLines(finalContent);
@@ -239,12 +340,16 @@ export default function App() {
     setShowMarkdown(false);
     
     try {
+      const activeIgnorePatterns = getActiveIgnorePatterns();
       const response = await fetch('/api/pack', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url: repoUrl }),
+        body: JSON.stringify({ 
+          url: repoUrl,
+          customIgnorePatterns: activeIgnorePatterns
+        }),
       });
 
       const data = await response.json();
@@ -275,15 +380,117 @@ export default function App() {
     );
   };
 
+  const handleLocalFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // 1. Immediately set the loading state and clear old data
+    setIsLoading(true);
+    setError('');
+    setFetchedFiles([]);
+    setSelectedFilePaths([]);
+    setShowMarkdown(false);
+
+    // 2. CRITICAL FIX: Yield the main thread for 50ms so React can render the loading spinner!
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    try {
+      // Fetch user's active ignore rules from the Settings UI
+      const activeIgnorePatterns = getActiveIgnorePatterns();
+      const BINARY_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.ttf', '.woff', '.woff2', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin'];
+      
+      let gitignoreContent = '';
+      const fileArray = Array.from(files) as any[];
+
+      // Find the root .gitignore
+      const gitignoreFile = fileArray.find(f => {
+        const parts = f.webkitRelativePath.split('/');
+        return parts.length === 2 && parts[1] === '.gitignore';
+      });
+
+      if (gitignoreFile) {
+        gitignoreContent = await gitignoreFile.text();
+      }
+
+      const ig = ignore();
+      if (gitignoreContent) ig.add(gitignoreContent);
+      if (activeIgnorePatterns.length > 0) ig.add(activeIgnorePatterns);
+
+      const processedFiles: RepoFile[] = [];
+      
+      // 3. Set limit to exactly 20MB
+      const MAX_TEXT_SIZE = 20 * 1024 * 1024; 
+      let totalSize = 0;
+
+      for (const file of fileArray) {
+        const pathParts = file.webkitRelativePath.split('/');
+        pathParts.shift(); 
+        const cleanPath = pathParts.join('/'); 
+
+        if (!cleanPath) continue;
+
+        // Hard-block .git instantly for performance
+        if (cleanPath.startsWith('.git/') || cleanPath.includes('/.git/')) continue;
+
+        const extMatch = cleanPath.match(/\.[^.]+$/);
+        const ext = extMatch ? extMatch[0].toLowerCase() : '';
+        if (BINARY_EXTENSIONS.includes(ext)) continue;
+
+        // Apply ignore rules (from Settings + .gitignore)
+        let isIgnored = false;
+        try {
+            isIgnored = ig.ignores(cleanPath);
+        } catch(e) {}
+        if (isIgnored) continue;
+
+        // Read the file safely
+        const content = await file.text();
+        const size = content.length;
+        
+        totalSize += size;
+        if (totalSize > MAX_TEXT_SIZE) {
+          throw new Error("Total text size exceeds 20MB limit. Please exclude more files in Settings or .gitignore.");
+        }
+
+        processedFiles.push({ path: cleanPath, content, size });
+      }
+
+      setFetchedFiles(processedFiles);
+      setSelectedFilePaths(processedFiles.map((f) => f.path));
+      setRepoInfo({
+        owner: 'Local',
+        repoName: fileArray[0].webkitRelativePath.split('/')[0],
+        branch: 'local-machine'
+      });
+
+    } catch (err: any) {
+      setError(err.message || 'Error reading local files.');
+    } finally {
+      setIsLoading(false);
+      // Reset the file input so the user can select the same folder again later if needed
+      e.target.value = ''; 
+    }
+  };
+
   return (
     <div className="relative min-h-screen bg-gray-50 dark:bg-[#121212] text-gray-900 dark:text-neutral-100 flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8 font-sans transition-colors duration-200">
       {mounted && (
-        <button
-          onClick={() => setTheme(isDark ? 'light' : 'dark')}
-          className="absolute top-6 right-6 p-2 rounded-full bg-white dark:bg-[#1E1E1E] text-gray-800 dark:text-gray-200 shadow-sm border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
-        >
-          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-3 z-50">
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-white dark:bg-[#1E1E1E] text-gray-700 dark:text-gray-200 shadow-sm border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+          >
+            <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-sm font-medium hidden sm:inline">Ignore Config</span>
+          </button>
+          
+          <button
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            className="p-2 sm:p-2.5 rounded-full bg-white dark:bg-[#1E1E1E] text-gray-800 dark:text-gray-200 shadow-sm border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+          >
+            {isDark ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
+          </button>
+        </div>
       )}
       <div className="w-full max-w-5xl flex flex-col gap-8">
         {/* Header */}
@@ -300,37 +507,71 @@ export default function App() {
         </div>
 
         <div className="w-full flex flex-col gap-6">
-          {/* Input Form */}
-          <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4 w-full">
-            <input
-              type="url"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/user/repo"
-              disabled={isLoading}
-              className="flex-1 text-lg rounded-xl border border-gray-300 dark:border-neutral-800 bg-white dark:bg-[#1E1E1E] px-6 py-4 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 transition-all shadow-sm"
-              required
-              autoComplete="off"
-              spellCheck="false"
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !repoUrl}
-              className="inline-flex justify-center items-center rounded-xl border border-transparent bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-8 py-4 text-base font-semibold text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-[#121212] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/30 active:translate-y-0"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="animate-spin -ml-1 mr-2 h-5 w-5" />
-                  Fetching...
-                </>
-              ) : (
-                'Fetch Files'
-              )}
-            </button>
-          </form>
+          {/* Main Action Area */}
+          <div className="w-full flex flex-col md:flex-row gap-6 md:gap-4 items-stretch bg-white/50 dark:bg-[#1E1E1E]/50 p-4 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-800/60 shadow-sm">
+            
+            {/* GitHub URL Form */}
+            <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 flex-1">
+              <input
+                type="url"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/owner/repo"
+                disabled={isLoading}
+                className="flex-1 w-full text-base rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-[#121212] px-5 py-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 transition-all shadow-sm"
+                required
+                autoComplete="off"
+                spellCheck="false"
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !repoUrl}
+                className="w-full sm:w-auto inline-flex justify-center items-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-8 py-3.5 text-base font-semibold text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/30 active:translate-y-0 whitespace-nowrap"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="animate-spin -ml-1 mr-2 h-5 w-5" />
+                    Fetching...
+                  </>
+                ) : (
+                  'Fetch Files'
+                )}
+              </button>
+            </form>
 
-          {/* Output Options */}
-          <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm flex flex-wrap gap-4 sm:gap-8 justify-center">
+            {/* Responsive "OR" Divider */}
+            <div className="flex md:flex-col items-center justify-center shrink-0 opacity-70">
+              <div className="h-px w-full md:w-px md:h-full bg-gray-300 dark:bg-neutral-700 flex-1"></div>
+              <span className="px-4 py-2 text-xs font-bold text-gray-500 dark:text-neutral-400 uppercase tracking-widest">OR</span>
+              <div className="h-px w-full md:w-px md:h-full bg-gray-300 dark:bg-neutral-700 flex-1"></div>
+            </div>
+
+            {/* Local Folder Upload */}
+            <div className="relative w-full md:w-auto md:min-w-[200px] shrink-0">
+              <input
+                type="file"
+                title="Upload Local Folder"
+                /* @ts-ignore */
+                webkitdirectory="true"
+                directory="true"
+                multiple
+                onChange={handleLocalFolderSelect}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                disabled={isLoading}
+                className="w-full inline-flex justify-center items-center rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-[#121212] hover:bg-gray-50 dark:hover:bg-neutral-800 px-8 py-3.5 text-base font-semibold text-gray-700 dark:text-gray-200 shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:-translate-y-0.5 active:translate-y-0 whitespace-nowrap"
+              >
+                📁 Upload Folder
+              </button>
+            </div>
+            
+          </div>
+
+          {/* Output Configuration Toggles */}
+          <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm flex flex-col sm:flex-row flex-wrap gap-4 sm:gap-8 justify-center items-center">
             <label className="flex items-center space-x-3 cursor-pointer group">
               <div className="relative flex items-center justify-center">
                 <input
@@ -343,6 +584,7 @@ export default function App() {
               </div>
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white transition-colors">Include Directory Structure</span>
             </label>
+            
             <label className="flex items-center space-x-3 cursor-pointer group">
               <div className="relative flex items-center justify-center">
                 <input
@@ -355,6 +597,7 @@ export default function App() {
               </div>
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white transition-colors">Remove Empty Lines</span>
             </label>
+            
             <label className="flex items-center space-x-3 cursor-pointer group">
               <div className="relative flex items-center justify-center">
                 <input
@@ -533,6 +776,72 @@ export default function App() {
           )
         ) : null}
       </div>
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
+          <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-800">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Ignore Rules</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Select the files and folders you want to exclude from the pack.</p>
+              </div>
+              <button 
+                onClick={() => setIsSettingsOpen(false)}
+                title="Close settings"
+                aria-label="Close settings"
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+              {ignoreCategories.map((category, idx) => (
+                <div key={idx} className="space-y-3">
+                  <h3 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-gray-800 pb-2">
+                    {category.category}
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {category.rules.map(rule => (
+                      <label key={rule.id} className="flex items-start space-x-3 cursor-pointer group p-2 hover:bg-gray-50 dark:hover:bg-neutral-800/50 rounded-lg transition-colors">
+                        <div className="relative flex items-center justify-center mt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={rule.enabled}
+                            onChange={() => toggleIgnoreRule(category.category, rule.id)}
+                            className="peer appearance-none w-4 h-4 border border-gray-300 dark:border-neutral-600 bg-gray-50 dark:bg-neutral-800 rounded checked:bg-indigo-600 checked:border-indigo-600 focus:outline-none transition-all"
+                          />
+                          <Check className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" strokeWidth={3} />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white transition-colors">{rule.label}</span>
+                          <span className="text-xs text-gray-500 font-mono mt-0.5">{rule.patterns.join(', ')}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#121212] flex justify-end gap-3">
+              <button 
+                onClick={() => setIgnoreCategories(DEFAULT_IGNORE_CATEGORIES)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                Reset Defaults
+              </button>
+              <button 
+                onClick={() => setIsSettingsOpen(false)}
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
+              >
+                Save & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
