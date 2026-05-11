@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Loader2, Copy, Check, Download, Sun, Moon, FolderOpen, Settings, X } from 'lucide-react';
+import { Loader2, Copy, Check, Download, Sun, Moon, FolderOpen, Settings, X, ChevronRight, ChevronDown, Minus } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import ignore from 'ignore';
 import { getEncoding } from 'js-tiktoken';
@@ -67,23 +67,23 @@ const DEFAULT_IGNORE_CATEGORIES = [
   {
     category: "Dependency Directories",
     rules: [
-      { id: "node_modules", patterns: ["node_modules/"], label: "Node.js (node_modules/)", enabled: true },
-      { id: "python_env", patterns: ["venv/", ".venv/", "env/", "__pycache__/"], label: "Python (venv, __pycache__)", enabled: true },
-      { id: "rust_target", patterns: ["target/"], label: "Rust (target/)", enabled: true },
-      { id: "java_build", patterns: [".gradle/", "build/"], label: "Java (.gradle/, build/)", enabled: true }
+      { id: "node_modules", patterns: ["node_modules/"], label: "Node.js", enabled: true },
+      { id: "python_env", patterns: ["venv/", ".venv/", "env/", "__pycache__/"], label: "Python", enabled: true },
+      { id: "rust_target", patterns: ["target/"], label: "Rust", enabled: true },
+      { id: "java_build", patterns: [".gradle/", "build/"], label: "Java", enabled: true }
     ]
   },
   {
     category: "Environment Variables & Secrets",
     rules: [
-      { id: "env_files", patterns: [".env", ".env.*"], label: "Environment Files (.env*)", enabled: true },
+      { id: "env_files", patterns: [".env", ".env.*"], label: "Environment Files", enabled: true },
       { id: "secrets", patterns: ["*.pem", "credentials.json"], label: "Keys & Credentials", enabled: true }
     ]
   },
   {
     category: "Build & Compiled Output",
     rules: [
-      { id: "web_build", patterns: ["dist/", "build/", ".next/", ".out/"], label: "Web Builds (dist, .next)", enabled: true },
+      { id: "web_build", patterns: ["dist/", "build/", ".next/", ".out/"], label: "Web Builds", enabled: true },
       { id: "compiled", patterns: ["*.o", "*.exe", "*.out", "*.class", "*.jar"], label: "Compiled Binaries", enabled: true },
       { id: "logs", patterns: ["*.log", "npm-debug.log*"], label: "Log Files", enabled: true }
     ]
@@ -105,8 +105,8 @@ const DEFAULT_IGNORE_CATEGORIES = [
   {
     category: "Version Control & CI/CD",
     rules: [
-      { id: "git_internal", patterns: [".git/"], label: "Git Internals (.git/)", enabled: true },
-      { id: "github_actions", patterns: [".github/"], label: "GitHub Actions (.github/)", enabled: true }
+      { id: "git_internal", patterns: [".git/"], label: "Git Internals", enabled: true },
+      { id: "github_actions", patterns: [".github/"], label: "GitHub Actions", enabled: true }
     ]
   },
   {
@@ -149,6 +149,140 @@ const generateDirectoryTree = (paths: string[]): string => {
   buildTreeString(tree);
   return result;
 };
+
+// --- START OF TREE VIEW LOGIC ---
+interface FileNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  children: Record<string, FileNode>;
+  size: number;
+}
+
+const buildFileTree = (files: RepoFile[]): FileNode => {
+  const root: FileNode = { name: 'root', path: '', isDirectory: true, children: {}, size: 0 };
+  for (const file of files) {
+    const parts = file.path.split('/');
+    let current = root;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isLast = i === parts.length - 1;
+      const currentPath = parts.slice(0, i + 1).join('/');
+      if (!current.children[part]) {
+        current.children[part] = { name: part, path: currentPath, isDirectory: !isLast, children: {}, size: 0 };
+      }
+      if (isLast) current.children[part].size = file.size;
+      current = current.children[part];
+    }
+  }
+  return root;
+};
+
+const FileTreeNode: React.FC<{
+  node: FileNode;
+  selectedFilePaths: string[];
+  toggleFileSelection: (path: string) => void;
+  handleToggleFolder: (paths: string[], forceCheck: boolean) => void;
+}> = ({
+  node,
+  selectedFilePaths,
+  toggleFileSelection,
+  handleToggleFolder
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  // Recursively get all files inside this folder
+  const getDescendantFiles = (n: FileNode): string[] => {
+    if (!n.isDirectory) return [n.path];
+    return Object.values(n.children).flatMap(getDescendantFiles);
+  };
+
+  const descendantFiles = getDescendantFiles(node);
+  const selectedCount = descendantFiles.filter(f => selectedFilePaths.includes(f)).length;
+  const totalCount = descendantFiles.length;
+
+  const isChecked = selectedCount === totalCount && totalCount > 0;
+  const isIndeterminate = selectedCount > 0 && selectedCount < totalCount;
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (node.isDirectory) {
+      handleToggleFolder(descendantFiles, !isChecked);
+    } else {
+      toggleFileSelection(node.path);
+    }
+  };
+
+  const sortedChildren = (Object.values(node.children) as FileNode[]).sort((a, b) => {
+    if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+    return a.isDirectory ? -1 : 1; // Folders first
+  });
+
+  return (
+    <div className="flex flex-col select-none">
+      <div 
+        className="flex items-center justify-between py-1.5 px-2 hover:bg-gray-100 dark:hover:bg-neutral-800/60 rounded-lg transition-colors cursor-pointer group"
+        onClick={handleToggle}
+      >
+        <div className="flex items-center overflow-hidden">
+          {/* Chevron for Folders */}
+          <div 
+            className={`w-5 h-5 flex items-center justify-center shrink-0 ${!node.isDirectory && 'opacity-0'}`}
+            onClick={(e) => {
+              e.stopPropagation(); // Prevents checkbox toggle when clicking chevron
+              if (node.isDirectory) setIsExpanded(!isExpanded);
+            }}
+          >
+            {node.isDirectory && (
+              isExpanded ? <ChevronDown className="w-4 h-4 text-gray-500 hover:text-gray-900 dark:hover:text-white" /> 
+                         : <ChevronRight className="w-4 h-4 text-gray-500 hover:text-gray-900 dark:hover:text-white" />
+            )}
+          </div>
+
+          {/* Indeterminate Checkbox */}
+          <div className="relative flex items-center justify-center mx-2 shrink-0">
+            <input
+              type="checkbox"
+              checked={isChecked}
+              readOnly
+              title={`Toggle ${node.name}`}
+              className={`appearance-none w-4 h-4 border rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer ${
+                isChecked || isIndeterminate
+                  ? 'bg-indigo-600 border-indigo-600 dark:border-indigo-600'
+                  : 'bg-gray-50 dark:bg-neutral-800 border-gray-300 dark:border-neutral-600'
+              }`}
+            />
+            {isChecked && !isIndeterminate && <Check className="absolute w-3 h-3 text-white pointer-events-none" strokeWidth={3} />}
+            {isIndeterminate && <Minus className="absolute w-3 h-3 text-white pointer-events-none" strokeWidth={3} />}
+          </div>
+
+          <span className={`flex items-center truncate font-mono text-xs transition-colors ${
+            !isChecked && !isIndeterminate ? 'text-gray-400 dark:text-gray-600 line-through' : 'text-gray-800 dark:text-gray-200 group-hover:text-black dark:group-hover:text-white'
+          }`}>
+            {node.name}
+          </span>
+        </div>
+
+        {/* Show File Size on the Right */}
+        {!node.isDirectory && (
+          <span className="text-gray-400 dark:text-neutral-500 whitespace-nowrap text-[11px] ml-4 shrink-0">
+            {node.size.toLocaleString()} chars
+          </span>
+        )}
+      </div>
+
+      {/* Recursive Children Rendering */}
+      {node.isDirectory && isExpanded && (
+        <div className="ml-5 border-l border-gray-200/50 dark:border-gray-800/50 pl-1 mt-0.5 flex flex-col gap-0.5">
+          {sortedChildren.map(child => (
+            <FileTreeNode key={child.path} node={child} selectedFilePaths={selectedFilePaths} toggleFileSelection={toggleFileSelection} handleToggleFolder={handleToggleFolder} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+// --- END OF TREE VIEW LOGIC ---
 
 export default function App() {
   const { resolvedTheme, setTheme } = useTheme();
@@ -398,6 +532,24 @@ export default function App() {
     );
   };
 
+  const handleToggleFolder = (pathsToToggle: string[], forceCheck: boolean) => {
+    if (forceCheck) {
+      // Add all folder files to selection
+      setSelectedFilePaths(prev => Array.from(new Set([...prev, ...pathsToToggle])));
+    } else {
+      // Remove all folder files from selection
+      const toRemove = new Set(pathsToToggle);
+      setSelectedFilePaths(prev => prev.filter(p => !toRemove.has(p)));
+    }
+  };
+
+  // Convert flat files into our Tree structure (Auto-updates when files change)
+  const fileTree = useMemo(() => buildFileTree(fetchedFiles), [fetchedFiles]);
+  const sortedRootChildren = (Object.values(fileTree.children) as FileNode[]).sort((a, b) => {
+    if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+    return a.isDirectory ? -1 : 1;
+  });
+
   const handleLocalFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -436,8 +588,8 @@ export default function App() {
 
       const processedFiles: RepoFile[] = [];
       
-      // 3. Set limit to exactly 20MB
-      const MAX_TEXT_SIZE = 20 * 1024 * 1024; 
+      // 3. Set limit to exactly 30MB
+      const MAX_TEXT_SIZE = 30 * 1024 * 1024; 
       let totalSize = 0;
 
       for (const file of fileArray) {
@@ -467,7 +619,7 @@ export default function App() {
         
         totalSize += size;
         if (totalSize > MAX_TEXT_SIZE) {
-          throw new Error("Total text size exceeds 20MB limit. Please exclude more files in Settings or .gitignore.");
+          throw new Error("Total text size exceeds 30MB limit. Please exclude more files in Settings or .gitignore.");
         }
 
         processedFiles.push({ path: cleanPath, content, size });
@@ -798,29 +950,16 @@ export default function App() {
                       Pack Selected
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                    {fetchedFiles.map((file, index) => {
-                      const isSelected = selectedFilePaths.includes(file.path);
-                      return (
-                        <label key={index} className="flex justify-between items-center text-sm p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors border border-transparent cursor-pointer group">
-                          <div className="flex items-center">
-                            <div className="relative flex items-center justify-center mr-4 shrink-0">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleFileSelection(file.path)}
-                                className="peer appearance-none w-4 h-4 border border-gray-300 dark:border-neutral-600 bg-gray-50 dark:bg-neutral-800 rounded checked:bg-indigo-600 checked:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#1E1E1E] transition-all"
-                              />
-                              <Check className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" strokeWidth={3} />
-                            </div>
-                            <span className={`text-gray-700 dark:text-gray-300 truncate font-mono text-xs group-hover:text-black dark:group-hover:text-white transition-colors ${!isSelected && 'text-gray-400 dark:text-gray-500 line-through'}`}>{file.path}</span>
-                          </div>
-                          <span className="text-gray-500 whitespace-nowrap text-xs ml-4">
-                            {file.content.length.toLocaleString()} chars
-                          </span>
-                        </label>
-                      );
-                    })}
+                  <div className="flex-1 overflow-y-auto p-3 custom-scrollbar flex flex-col gap-1">
+                    {sortedRootChildren.map(child => (
+                      <FileTreeNode
+                        key={child.path}
+                        node={child}
+                        selectedFilePaths={selectedFilePaths}
+                        toggleFileSelection={toggleFileSelection}
+                        handleToggleFolder={handleToggleFolder}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>

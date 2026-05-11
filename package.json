@@ -1,8 +1,15 @@
 {
-  "name": "react-example",
-  "private": true,
-  "version": "0.0.0",
+  "name": "monodoc-pack",
+  "private": false,
+  "version": "1.0.0",
+  "description": "Flatten entire multi-file repositories into a single, AI-ready Markdown document.",
   "type": "module",
+  "bin": {
+    "monodoc-pack": "cli.js"
+  },
+  "files": [
+    "cli.js"
+  ],
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --outdir=dist/server --format=cjs",
