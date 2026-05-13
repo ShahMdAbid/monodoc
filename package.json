@@ -1,7 +1,7 @@
 {
   "name": "monodoc-pack",
   "private": false,
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Flatten entire multi-file repositories into a single, AI-ready Markdown document.",
   "type": "module",
   "bin": {
