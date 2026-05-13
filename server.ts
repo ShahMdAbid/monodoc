@@ -60,8 +60,9 @@ async function startServer() {
 
       const zip = new AdmZip(buffer);
       const zipEntries = zip.getEntries();
+      const allPaths: string[] = [];
       const files: { path: string; content: string; size: number }[] = [];
-      const BINARY_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.ttf', '.woff', '.woff2', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin'];
+      const BINARY_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.ttf', '.woff', '.woff2', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'];
 
       let gitignoreContent = '';
       for (const entry of zipEntries) {
@@ -86,9 +87,6 @@ async function startServer() {
         if (entry.isDirectory) continue;
         
         const cleanPath = entry.entryName.split('/').slice(1).join('/');
-        const ext = path.extname(cleanPath).toLowerCase();
-        
-        if (BINARY_EXTENSIONS.includes(ext)) continue;
 
         // 3. Let the ignore package handle EVERYTHING natively (no more HARDCODED_IGNORE array!)
         let isIgnored = false;
@@ -97,6 +95,11 @@ async function startServer() {
         } catch(e) {}
         
         if (isIgnored) continue;
+
+        allPaths.push(cleanPath);
+
+        const ext = path.extname(cleanPath).toLowerCase();
+        if (BINARY_EXTENSIONS.includes(ext)) continue;
 
         const content = entry.getData().toString('utf8');
         const size = Buffer.byteLength(content, 'utf8');
@@ -111,7 +114,7 @@ async function startServer() {
 
       return res.json({ 
         message: 'Successfully extracted repository.',
-        data: { owner, repoName, branch, filesCount: files.length, files }
+        data: { owner, repoName, branch, totalFilesCount: allPaths.length, allPaths, filesCount: files.length, files }
       });
 
     } catch (error: any) {

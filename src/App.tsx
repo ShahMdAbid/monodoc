@@ -115,6 +115,13 @@ const DEFAULT_IGNORE_CATEGORIES = [
       { id: "coverage", patterns: ["coverage/"], label: "Coverage Reports", enabled: true },
       { id: "docs_temp", patterns: ["docs/_build/", "tmp/", "temp/"], label: "Temp & Doc Builds", enabled: true }
     ]
+  },
+  {
+    category: "Web Assets & Media",
+    rules: [
+      { id: "public_assets", patterns: ["public/assets/", "public/images/", "public/media/"], label: "Public Asset Directories", enabled: false },
+      { id: "static_media", patterns: ["static/", "images/", "media/"], label: "Static Media Directories", enabled: false }
+    ]
   }
 ];
 
@@ -339,7 +346,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [fetchedFiles, setFetchedFiles] = useState<RepoFile[]>([]);
-  const [repoInfo, setRepoInfo] = useState<{ owner: string; repoName: string; branch: string } | null>(null);
+  const [repoInfo, setRepoInfo] = useState<{ owner: string; repoName: string; branch: string; totalFilesCount?: number; allPaths?: string[] } | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [ignoreCategories, setIgnoreCategories] = useState(DEFAULT_IGNORE_CATEGORIES);
@@ -388,11 +395,18 @@ export default function App() {
 
   const generateOutput = (selectedFilesArray: RepoFile[]) => {
     let output = '';
+    const notesBlock = `<notes>\n- Some files may have been excluded based on .gitignore rules and monodoc's configuration\n- Binary files are not included in this packed representation. Please refer to the directory structure for a complete list of file paths, including binary files\n</notes>\n\n`;
+    
+    // Fallback to selected files if allPaths isn't available
+    const treePaths = repoInfo?.allPaths && repoInfo.allPaths.length > 0 
+      ? repoInfo.allPaths 
+      : selectedFilesArray.map(f => f.path);
 
     if (outputFormat === 'markdown') {
+      output += notesBlock;
       if (includeDirectoryStructure) {
         output += `## Directory Structure\n\n\`\`\`text\n`;
-        output += generateDirectoryTree(selectedFilesArray.map(f => f.path));
+        output += generateDirectoryTree(treePaths);
         output += `\`\`\`\n\n`;
       }
       const extensionToLanguage: Record<string, string> = {
@@ -414,8 +428,9 @@ export default function App() {
       }
     } else if (outputFormat === 'xml') {
       output += `<?xml version="1.0" encoding="UTF-8"?>\n<repository>\n`;
+      output += notesBlock;
       if (includeDirectoryStructure) {
-        output += `  <directory_structure>\n<![CDATA[\n${generateDirectoryTree(selectedFilesArray.map(f => f.path))}\n]]>\n  </directory_structure>\n`;
+        output += `  <directory_structure>\n<![CDATA[\n${generateDirectoryTree(treePaths)}\n]]>\n  </directory_structure>\n`;
       }
       output += `  <files>\n`;
       for (const file of selectedFilesArray) {
@@ -443,7 +458,7 @@ export default function App() {
     } else {
       setFinalMarkdown('');
     }
-  }, [fetchedFiles, selectedFilePaths, includeDirectoryStructure, removeEmptyLines, removeComments, outputFormat, addLineNumbers]);
+  }, [fetchedFiles, selectedFilePaths, includeDirectoryStructure, removeEmptyLines, removeComments, outputFormat, addLineNumbers, repoInfo]);
 
   const handleCopy = async () => {
     if (!finalMarkdown) return;
@@ -510,7 +525,9 @@ export default function App() {
       setRepoInfo({
         owner: data.data.owner,
         repoName: data.data.repoName,
-        branch: data.data.branch
+        branch: data.data.branch,
+        totalFilesCount: data.data.totalFilesCount,
+        allPaths: data.data.allPaths
       });
       
       // Auto-scroll to results after DOM updates
@@ -567,7 +584,7 @@ export default function App() {
     try {
       // Fetch user's active ignore rules from the Settings UI
       const activeIgnorePatterns = getActiveIgnorePatterns();
-      const BINARY_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.ttf', '.woff', '.woff2', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin'];
+      const BINARY_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.ttf', '.woff', '.woff2', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'];
       
       let gitignoreContent = '';
       const fileArray = Array.from(files) as any[];
@@ -587,6 +604,7 @@ export default function App() {
       if (activeIgnorePatterns.length > 0) ig.add(activeIgnorePatterns);
 
       const processedFiles: RepoFile[] = [];
+      const allPaths: string[] = [];
       
       // 3. Set limit to exactly 30MB
       const MAX_TEXT_SIZE = 30 * 1024 * 1024; 
@@ -596,15 +614,10 @@ export default function App() {
         const pathParts = file.webkitRelativePath.split('/');
         pathParts.shift(); 
         const cleanPath = pathParts.join('/'); 
-
         if (!cleanPath) continue;
 
         // Hard-block .git instantly for performance
         if (cleanPath.startsWith('.git/') || cleanPath.includes('/.git/')) continue;
-
-        const extMatch = cleanPath.match(/\.[^.]+$/);
-        const ext = extMatch ? extMatch[0].toLowerCase() : '';
-        if (BINARY_EXTENSIONS.includes(ext)) continue;
 
         // Apply ignore rules (from Settings + .gitignore)
         let isIgnored = false;
@@ -612,6 +625,12 @@ export default function App() {
             isIgnored = ig.ignores(cleanPath);
         } catch(e) {}
         if (isIgnored) continue;
+
+        allPaths.push(cleanPath);
+
+        const extMatch = cleanPath.match(/\.[^.]+$/);
+        const ext = extMatch ? extMatch[0].toLowerCase() : '';
+        if (BINARY_EXTENSIONS.includes(ext)) continue;
 
         // Read the file safely
         const content = await file.text();
@@ -630,7 +649,9 @@ export default function App() {
       setRepoInfo({
         owner: 'Local',
         repoName: fileArray[0].webkitRelativePath.split('/')[0],
-        branch: 'local-machine'
+        branch: 'local-machine',
+        totalFilesCount: allPaths.length,
+        allPaths: allPaths
       });
 
       // Auto-scroll to results after DOM updates
@@ -899,7 +920,7 @@ export default function App() {
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Files</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{fetchedFiles.length}</span>
+                      <span className="font-bold text-gray-900 dark:text-white">{repoInfo.totalFilesCount || fetchedFiles.length}</span>
                     </div>
                   </div>
                 </div>

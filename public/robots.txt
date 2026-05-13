@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://monodoc.smabid.me/sitemap.xml
