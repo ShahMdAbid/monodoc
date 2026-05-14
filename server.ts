@@ -33,17 +33,45 @@ async function startServer() {
 
       const owner = paths[0];
       const repoName = paths[1].endsWith('.git') ? paths[1].slice(0, -4) : paths[1];
-      
-      let branch = 'main'; 
-      if (paths.length >= 4 && paths[2] === 'tree') {
-        branch = paths.slice(3).join('/');
+      let branch = ''; 
+
+      // Setup auth header if you add a token to your .env later (highly recommended to avoid rate limits)
+      const fetchHeaders: Record<string, string> = { 'User-Agent': 'Pack-to-Markdown-App' };
+      if (process.env.GITHUB_TOKEN) {
+        fetchHeaders['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
       }
 
-      const zipUrl = `https://github.com/${owner}/${repoName}/archive/refs/heads/${branch}.zip`;
-      
-      const githubRes = await fetch(zipUrl, {
-        headers: { 'User-Agent': 'Pack-to-Markdown-App' }
-      });
+      // 1. Determine the branch
+      if (paths.length >= 4 && paths[2] === 'tree') {
+        // User provided a specific branch in the URL
+        branch = paths.slice(3).join('/');
+      } else {
+        // Fetch default branch from GitHub API
+        try {
+          const repoMetaRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}`, {
+            headers: fetchHeaders
+          });
+          if (repoMetaRes.ok) {
+            const repoMeta = await repoMetaRes.json();
+            branch = repoMeta.default_branch || 'main';
+          } else {
+            branch = 'main'; // Fallback if API fails
+          }
+        } catch (e) {
+          branch = 'main'; // Fallback on network error
+        }
+      }
+
+      // 2. Try fetching the zip
+      let zipUrl = `https://github.com/${owner}/${repoName}/archive/refs/heads/${branch}.zip`;
+      let githubRes = await fetch(zipUrl, { headers: fetchHeaders });
+
+      // 3. Fallback: If 'main' fails and the user didn't explicitly request a branch, try 'master'
+      if (githubRes.status === 404 && !(paths.length >= 4 && paths[2] === 'tree') && branch === 'main') {
+        branch = 'master';
+        zipUrl = `https://github.com/${owner}/${repoName}/archive/refs/heads/${branch}.zip`;
+        githubRes = await fetch(zipUrl, { headers: fetchHeaders });
+      }
 
       if (!githubRes.ok) {
         if (githubRes.status === 404) return res.status(404).json({ error: 'Repository not found or is private.' });
@@ -62,7 +90,20 @@ async function startServer() {
       const zipEntries = zip.getEntries();
       const allPaths: string[] = [];
       const files: { path: string; content: string; size: number }[] = [];
-      const BINARY_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.ttf', '.woff', '.woff2', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'];
+      const BINARY_EXTENSIONS = [
+        // Images
+        '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp', '.bmp', '.tiff', '.avif',
+        // Fonts
+        '.ttf', '.woff', '.woff2', '.eot', '.otf',
+        // Audio/Video
+        '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv', '.webm',
+        // Archives & Executables
+        '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin',
+        // Documents & Ebooks
+        '.pdf', '.epub', '.mobi', '.azw3', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.rtf', '.odt', '.ods', '.odp',
+        // Database / Local state
+        '.sqlite', '.sqlite3', '.db', '.bak'
+      ];
 
       let gitignoreContent = '';
       for (const entry of zipEntries) {

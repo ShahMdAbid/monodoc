@@ -584,7 +584,20 @@ export default function App() {
     try {
       // Fetch user's active ignore rules from the Settings UI
       const activeIgnorePatterns = getActiveIgnorePatterns();
-      const BINARY_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.ttf', '.woff', '.woff2', '.eot', '.mp3', '.mp4', '.pdf', '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'];
+      const BINARY_EXTENSIONS = [
+        // Images
+        '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp', '.bmp', '.tiff', '.avif',
+        // Fonts
+        '.ttf', '.woff', '.woff2', '.eot', '.otf',
+        // Audio/Video
+        '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv', '.webm',
+        // Archives & Executables
+        '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin',
+        // Documents & Ebooks
+        '.pdf', '.epub', '.mobi', '.azw3', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.rtf', '.odt', '.ods', '.odp',
+        // Database / Local state
+        '.sqlite', '.sqlite3', '.db', '.bak'
+      ];
       
       let gitignoreContent = '';
       const fileArray = Array.from(files) as any[];
