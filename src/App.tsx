@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Loader2, Copy, Check, Download, Sun, Moon, FolderOpen, Settings, X, ChevronRight, ChevronDown, Minus } from 'lucide-react';
+import { Loader2, Copy, Check, Download, Sun, Moon, FolderOpen, HelpCircle, X, ChevronRight, ChevronDown, Minus } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import ignore from 'ignore';
 import { getEncoding } from 'js-tiktoken';
@@ -134,7 +134,7 @@ const DEFAULT_IGNORE_CATEGORIES = [
 
 const generateDirectoryTree = (paths: string[]): string => {
   if (!paths || paths.length === 0) return '';
-  
+
   const tree: { [key: string]: any } = {};
   for (const path of paths) {
     const parts = path.split('/');
@@ -148,7 +148,7 @@ const generateDirectoryTree = (paths: string[]): string => {
   }
 
   let result = '';
-  
+
   const buildTreeString = (node: any, prefix: string = '') => {
     const keys = Object.keys(node);
     for (let i = 0; i < keys.length; i++) {
@@ -203,99 +203,97 @@ const FileTreeNode: React.FC<{
   toggleFileSelection,
   handleToggleFolder
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(true);
 
-  // Recursively get all files inside this folder
-  const getDescendantFiles = (n: FileNode): string[] => {
-    if (!n.isDirectory) return [n.path];
-    return Object.values(n.children).flatMap(getDescendantFiles);
-  };
+    // Recursively get all files inside this folder
+    const getDescendantFiles = (n: FileNode): string[] => {
+      if (!n.isDirectory) return [n.path];
+      return Object.values(n.children).flatMap(getDescendantFiles);
+    };
 
-  const descendantFiles = getDescendantFiles(node);
-  const selectedCount = descendantFiles.filter(f => selectedFilePaths.includes(f)).length;
-  const totalCount = descendantFiles.length;
+    const descendantFiles = getDescendantFiles(node);
+    const selectedCount = descendantFiles.filter(f => selectedFilePaths.includes(f)).length;
+    const totalCount = descendantFiles.length;
 
-  const isChecked = selectedCount === totalCount && totalCount > 0;
-  const isIndeterminate = selectedCount > 0 && selectedCount < totalCount;
+    const isChecked = selectedCount === totalCount && totalCount > 0;
+    const isIndeterminate = selectedCount > 0 && selectedCount < totalCount;
 
-  const handleToggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (node.isDirectory) {
-      handleToggleFolder(descendantFiles, !isChecked);
-    } else {
-      toggleFileSelection(node.path);
-    }
-  };
+    const handleToggle = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (node.isDirectory) {
+        handleToggleFolder(descendantFiles, !isChecked);
+      } else {
+        toggleFileSelection(node.path);
+      }
+    };
 
-  const sortedChildren = (Object.values(node.children) as FileNode[]).sort((a, b) => {
-    if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
-    return a.isDirectory ? -1 : 1; // Folders first
-  });
+    const sortedChildren = (Object.values(node.children) as FileNode[]).sort((a, b) => {
+      if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+      return a.isDirectory ? -1 : 1; // Folders first
+    });
 
-  return (
-    <div className="flex flex-col select-none">
-      <div 
-        className="flex items-center justify-between py-1.5 px-2 hover:bg-gray-100 dark:hover:bg-neutral-800/60 rounded-lg transition-colors cursor-pointer group"
-        onClick={handleToggle}
-      >
-        <div className="flex items-center overflow-hidden">
-          {/* Chevron for Folders */}
-          <div 
-            className={`w-5 h-5 flex items-center justify-center shrink-0 ${!node.isDirectory && 'opacity-0'}`}
-            onClick={(e) => {
-              e.stopPropagation(); // Prevents checkbox toggle when clicking chevron
-              if (node.isDirectory) setIsExpanded(!isExpanded);
-            }}
-          >
-            {node.isDirectory && (
-              isExpanded ? <ChevronDown className="w-4 h-4 text-gray-500 hover:text-gray-900 dark:hover:text-white" /> 
-                         : <ChevronRight className="w-4 h-4 text-gray-500 hover:text-gray-900 dark:hover:text-white" />
-            )}
-          </div>
+    return (
+      <div className="flex flex-col select-none">
+        <div
+          className="flex items-center justify-between py-1.5 px-2 hover:bg-gray-100 dark:hover:bg-neutral-800/60 rounded-lg transition-colors cursor-pointer group"
+          onClick={handleToggle}
+        >
+          <div className="flex items-center overflow-hidden">
+            {/* Chevron for Folders */}
+            <div
+              className={`w-5 h-5 flex items-center justify-center shrink-0 ${!node.isDirectory && 'opacity-0'}`}
+              onClick={(e) => {
+                e.stopPropagation(); // Prevents checkbox toggle when clicking chevron
+                if (node.isDirectory) setIsExpanded(!isExpanded);
+              }}
+            >
+              {node.isDirectory && (
+                isExpanded ? <ChevronDown className="w-4 h-4 text-gray-500 hover:text-gray-900 dark:hover:text-white" />
+                  : <ChevronRight className="w-4 h-4 text-gray-500 hover:text-gray-900 dark:hover:text-white" />
+              )}
+            </div>
 
-          {/* Indeterminate Checkbox */}
-          <div className="relative flex items-center justify-center mx-2 shrink-0">
-            <input
-              type="checkbox"
-              checked={isChecked}
-              readOnly
-              title={`Toggle ${node.name}`}
-              className={`appearance-none w-4 h-4 border rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer ${
-                isChecked || isIndeterminate
+            {/* Indeterminate Checkbox */}
+            <div className="relative flex items-center justify-center mx-2 shrink-0">
+              <input
+                type="checkbox"
+                checked={isChecked}
+                readOnly
+                title={`Toggle ${node.name}`}
+                className={`appearance-none w-4 h-4 border rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer ${isChecked || isIndeterminate
                   ? 'bg-indigo-600 border-indigo-600 dark:border-indigo-600'
                   : 'bg-gray-50 dark:bg-neutral-800 border-gray-300 dark:border-neutral-600'
-              }`}
-            />
-            {isChecked && !isIndeterminate && <Check className="absolute w-3 h-3 text-white pointer-events-none" strokeWidth={3} />}
-            {isIndeterminate && <Minus className="absolute w-3 h-3 text-white pointer-events-none" strokeWidth={3} />}
+                  }`}
+              />
+              {isChecked && !isIndeterminate && <Check className="absolute w-3 h-3 text-white pointer-events-none" strokeWidth={3} />}
+              {isIndeterminate && <Minus className="absolute w-3 h-3 text-white pointer-events-none" strokeWidth={3} />}
+            </div>
+
+            <span className={`flex items-center truncate font-mono text-xs transition-colors ${!isChecked && !isIndeterminate ? 'text-gray-400 dark:text-gray-600 line-through' : 'text-gray-800 dark:text-gray-200 group-hover:text-black dark:group-hover:text-white'
+              }`}>
+              {node.name}
+            </span>
           </div>
 
-          <span className={`flex items-center truncate font-mono text-xs transition-colors ${
-            !isChecked && !isIndeterminate ? 'text-gray-400 dark:text-gray-600 line-through' : 'text-gray-800 dark:text-gray-200 group-hover:text-black dark:group-hover:text-white'
-          }`}>
-            {node.name}
-          </span>
+          {/* Show File Size on the Right */}
+          {!node.isDirectory && (
+            <span className="text-gray-400 dark:text-neutral-500 whitespace-nowrap text-[11px] ml-4 shrink-0">
+              {node.size.toLocaleString()} chars
+            </span>
+          )}
         </div>
 
-        {/* Show File Size on the Right */}
-        {!node.isDirectory && (
-          <span className="text-gray-400 dark:text-neutral-500 whitespace-nowrap text-[11px] ml-4 shrink-0">
-            {node.size.toLocaleString()} chars
-          </span>
+        {/* Recursive Children Rendering */}
+        {node.isDirectory && isExpanded && (
+          <div className="ml-5 border-l border-gray-200/50 dark:border-gray-800/50 pl-1 mt-0.5 flex flex-col gap-0.5">
+            {sortedChildren.map(child => (
+              <FileTreeNode key={child.path} node={child} selectedFilePaths={selectedFilePaths} toggleFileSelection={toggleFileSelection} handleToggleFolder={handleToggleFolder} />
+            ))}
+          </div>
         )}
       </div>
-
-      {/* Recursive Children Rendering */}
-      {node.isDirectory && isExpanded && (
-        <div className="ml-5 border-l border-gray-200/50 dark:border-gray-800/50 pl-1 mt-0.5 flex flex-col gap-0.5">
-          {sortedChildren.map(child => (
-            <FileTreeNode key={child.path} node={child} selectedFilePaths={selectedFilePaths} toggleFileSelection={toggleFileSelection} handleToggleFolder={handleToggleFolder} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+    );
+  };
 // --- END OF TREE VIEW LOGIC ---
 
 export default function App() {
@@ -312,7 +310,7 @@ export default function App() {
 
   useEffect(() => {
     setMounted(true);
-    let isMounted = true; 
+    let isMounted = true;
 
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -325,7 +323,7 @@ export default function App() {
         for (let i = 0; i <= currentText.length; i++) {
           if (!isMounted) return;
           setDisplayedText(currentText.slice(0, i));
-          await sleep(40); 
+          await sleep(40);
         }
 
         await sleep(5000);
@@ -333,7 +331,7 @@ export default function App() {
         if (!isMounted) return;
 
         setDisplayedText('');
-        await sleep(200); 
+        await sleep(200);
 
         textIndex = (textIndex + 1) % texts.length;
       }
@@ -355,7 +353,7 @@ export default function App() {
   const [fetchedFiles, setFetchedFiles] = useState<RepoFile[]>([]);
   const [repoInfo, setRepoInfo] = useState<{ owner: string; repoName: string; branch: string; totalFilesCount?: number; allPaths?: string[] } | null>(null);
   const [isCopied, setIsCopied] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [ignoreCategories, setIgnoreCategories] = useState(DEFAULT_IGNORE_CATEGORIES);
 
   // Helper to extract a flat list of patterns from checked rules
@@ -403,10 +401,10 @@ export default function App() {
   const generateOutput = (selectedFilesArray: RepoFile[]) => {
     let output = '';
     const notesBlock = `<notes>\n- Some files may have been excluded based on .gitignore rules and monodoc's configuration\n- Binary files are not included in this packed representation. Please refer to the directory structure for a complete list of file paths, including binary files\n</notes>\n\n`;
-    
+
     // Fallback to selected files if allPaths isn't available
-    const treePaths = repoInfo?.allPaths && repoInfo.allPaths.length > 0 
-      ? repoInfo.allPaths 
+    const treePaths = repoInfo?.allPaths && repoInfo.allPaths.length > 0
+      ? repoInfo.allPaths
       : selectedFilesArray.map(f => f.path);
 
     if (outputFormat === 'markdown') {
@@ -447,7 +445,7 @@ export default function App() {
         if (removeComments) finalContent = stripComments(finalContent, ext);
         if (removeEmptyLines) finalContent = stripEmptyLines(finalContent);
         if (addLineNumbers) finalContent = injectLineNumbers(finalContent);
-        
+
         // Escape existing CDATA closing tags in the source code to prevent XML breakage
         const safeContent = finalContent.replace(/]]>/g, ']]]]><![CDATA[>');
         output += `    <file path="${file.path}">\n<![CDATA[\n${safeContent}\n]]>\n    </file>\n`;
@@ -496,7 +494,7 @@ export default function App() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     if (!repoUrl) {
       setError('Please enter a valid URL.');
       return;
@@ -507,7 +505,7 @@ export default function App() {
     setRepoInfo(null);
     setSelectedFilePaths([]);
     setShowMarkdown(false);
-    
+
     try {
       const activeIgnorePatterns = getActiveIgnorePatterns();
       const response = await fetch('/api/pack', {
@@ -515,7 +513,7 @@ export default function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           url: repoUrl,
           customIgnorePatterns: activeIgnorePatterns
         }),
@@ -536,7 +534,7 @@ export default function App() {
         totalFilesCount: data.data.totalFilesCount,
         allPaths: data.data.allPaths
       });
-      
+
       // Auto-scroll to results after DOM updates
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -551,7 +549,7 @@ export default function App() {
   const handleSelectAll = () => setSelectedFilePaths(fetchedFiles.map(f => f.path));
   const handleDeselectAll = () => setSelectedFilePaths([]);
   const toggleFileSelection = (path: string) => {
-    setSelectedFilePaths(prev => 
+    setSelectedFilePaths(prev =>
       prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
     );
   };
@@ -605,7 +603,7 @@ export default function App() {
         // Database / Local state
         '.sqlite', '.sqlite3', '.db', '.bak'
       ];
-      
+
       let gitignoreContent = '';
       const fileArray = Array.from(files) as any[];
 
@@ -625,15 +623,15 @@ export default function App() {
 
       const processedFiles: RepoFile[] = [];
       const allPaths: string[] = [];
-      
+
       // 3. Set limit to exactly 30MB
-      const MAX_TEXT_SIZE = 30 * 1024 * 1024; 
+      const MAX_TEXT_SIZE = 30 * 1024 * 1024;
       let totalSize = 0;
 
       for (const file of fileArray) {
         const pathParts = file.webkitRelativePath.split('/');
-        pathParts.shift(); 
-        const cleanPath = pathParts.join('/'); 
+        pathParts.shift();
+        const cleanPath = pathParts.join('/');
         if (!cleanPath) continue;
 
         // Hard-block .git instantly for performance
@@ -642,8 +640,8 @@ export default function App() {
         // Apply ignore rules (from Settings + .gitignore)
         let isIgnored = false;
         try {
-            isIgnored = ig.ignores(cleanPath);
-        } catch(e) {}
+          isIgnored = ig.ignores(cleanPath);
+        } catch (e) { }
         if (isIgnored) continue;
 
         allPaths.push(cleanPath);
@@ -655,7 +653,7 @@ export default function App() {
         // Read the file safely
         const content = await file.text();
         const size = content.length;
-        
+
         totalSize += size;
         if (totalSize > MAX_TEXT_SIZE) {
           throw new Error("Total text size exceeds 30MB limit. Please exclude more files in Settings or .gitignore.");
@@ -684,7 +682,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
       // Reset the file input so the user can select the same folder again later if needed
-      e.target.value = ''; 
+      e.target.value = '';
     }
   };
 
@@ -693,13 +691,13 @@ export default function App() {
       {mounted && (
         <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex items-center gap-3 z-50">
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => setIsHelpOpen(true)}
             className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-white dark:bg-[#1E1E1E] text-gray-700 dark:text-gray-200 shadow-sm border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
           >
-            <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-sm font-medium hidden sm:inline">Ignore Config</span>
+            <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-sm font-medium hidden sm:inline">Help</span>
           </button>
-          
+
           <button
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
             className="p-2 sm:p-2.5 rounded-full bg-white dark:bg-[#1E1E1E] text-gray-800 dark:text-gray-200 shadow-sm border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
@@ -726,7 +724,7 @@ export default function App() {
         <div className="w-full flex flex-col gap-6">
           {/* Main Action Area */}
           <div className="w-full flex flex-col md:flex-row gap-6 md:gap-4 items-stretch bg-white/50 dark:bg-[#1E1E1E]/50 p-4 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-800/60 shadow-sm">
-            
+
             {/* GitHub URL Form */}
             <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 flex-1">
               <input
@@ -784,7 +782,7 @@ export default function App() {
                 📁 Upload Folder
               </button>
             </div>
-            
+
           </div>
 
           {/* Output Configuration Toggles */}
@@ -802,7 +800,7 @@ export default function App() {
                 <option value="xml">XML (.xml)</option>
               </select>
             </div>
-            
+
             <label className="flex items-center space-x-3 cursor-pointer group">
               <div className="relative flex items-center justify-center">
                 <input
@@ -815,7 +813,7 @@ export default function App() {
               </div>
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white transition-colors">Include Directory Structure</span>
             </label>
-            
+
             <label className="flex items-center space-x-3 cursor-pointer group">
               <div className="relative flex items-center justify-center">
                 <input
@@ -828,7 +826,7 @@ export default function App() {
               </div>
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white transition-colors">Remove Empty Lines</span>
             </label>
-            
+
             <label className="flex items-center space-x-3 cursor-pointer group">
               <div className="relative flex items-center justify-center">
                 <input
@@ -867,209 +865,241 @@ export default function App() {
         {/* Output Area or Dashboard */}
         <div ref={resultsRef} className="w-full scroll-mt-6 flex flex-col">
           {fetchedFiles.length > 0 && repoInfo ? (
-          showMarkdown ? (
-            <div className="flex-1 flex flex-col min-h-[500px] mt-2 mb-8">
-              <div className="flex justify-between items-center mb-4">
-                <button
-                  onClick={() => setShowMarkdown(false)}
-                  className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors whitespace-nowrap flex items-center pr-2"
-                >
-                  &larr; <span className="hidden sm:inline ml-1">Back to Dashboard</span><span className="sm:hidden ml-1">Back</span>
-                </button>
-                <div className="flex gap-2 sm:gap-3">
+            showMarkdown ? (
+              <div className="flex-1 flex flex-col min-h-[500px] mt-2 mb-8">
+                <div className="flex justify-between items-center mb-4">
                   <button
-                    onClick={handleCopy}
-                    className="inline-flex justify-center items-center rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-700 dark:text-white px-3 sm:px-6 py-3 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
-                    title="Copy to Clipboard"
+                    onClick={() => setShowMarkdown(false)}
+                    className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors whitespace-nowrap flex items-center pr-2"
                   >
-                    {isCopied ? (
-                      <>
-                        <Check className="w-4 h-4 sm:mr-2 text-green-500 dark:text-green-400" />
-                        <span className="hidden sm:inline">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4 sm:mr-2 text-gray-500 dark:text-neutral-400" />
-                        <span className="hidden sm:inline">Copy to Clipboard</span>
-                      </>
-                    )}
+                    &larr; <span className="hidden sm:inline ml-1">Back to Dashboard</span><span className="sm:hidden ml-1">Back</span>
                   </button>
-                  <button
-                    onClick={handleDownload}
-                    className="inline-flex justify-center items-center rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-700 dark:text-white px-3 sm:px-6 py-3 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
-                    title={`Download .${outputFormat === 'xml' ? 'xml' : 'md'} file`}
-                  >
-                    <Download className="w-4 h-4 sm:mr-2 text-gray-500 dark:text-neutral-400" />
-                    <span className="hidden sm:inline">Download .{outputFormat === 'xml' ? 'xml' : 'md'} file</span>
-                    <span className="sm:hidden font-mono text-xs">.{outputFormat === 'xml' ? 'xml' : 'md'}</span>
-                  </button>
-                </div>
-              </div>
-              <label htmlFor="markdown-output" className="sr-only">
-                Markdown Output
-              </label>
-              <div className="relative flex-1 group">
-                <textarea
-                  id="markdown-output"
-                  value={finalMarkdown}
-                  readOnly
-                  placeholder={`${outputFormat === 'xml' ? 'XML' : 'Markdown'} output will appear here...`}
-                  className="absolute inset-0 w-full h-full rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-[#1E1E1E] px-6 py-5 text-gray-800 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm leading-relaxed resize-none transition-colors shadow-sm"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mb-8 items-start">
-              {/* Left Column (Span 1) */}
-              <div className="col-span-1 flex flex-col gap-6">
-                {/* Summary Card */}
-                <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-sm">
-                  <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Info</h2>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
-                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Owner</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{repoInfo.owner}</span>
-                    </div>
-                    <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
-                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Repo</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{repoInfo.repoName}</span>
-                    </div>
-                    <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
-                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Branch</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{repoInfo.branch}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Files</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{repoInfo.totalFilesCount || fetchedFiles.length}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Pack Summary Card */}
-                <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-sm">
-                  <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Pack Summary</h2>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
-                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Selected Files</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{stats.totalFiles}</span>
-                    </div>
-                    <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
-                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Tokens</span>
-                      <span className="font-bold text-gray-900 dark:text-white">~{stats.totalTokens.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Size</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{stats.totalSize.toLocaleString()} chars</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column (Span 2) */}
-              <div className="col-span-1 md:col-span-2 relative">
-                <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm h-[600px] flex flex-col overflow-hidden">
-                  <div className="sticky top-0 bg-white dark:bg-[#1E1E1E] border-b border-gray-200 dark:border-gray-800 p-4 shrink-0 flex flex-col sm:flex-row justify-between items-center gap-4 z-10">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleSelectAll}
-                        className="text-xs font-medium border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-neutral-300 bg-transparent py-2 px-3 rounded-md transition-colors"
-                      >
-                        Select All
-                      </button>
-                      <button
-                        onClick={handleDeselectAll}
-                        className="text-xs font-medium border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-neutral-300 bg-transparent py-2 px-3 rounded-md transition-colors"
-                      >
-                        Deselect All
-                      </button>
-                    </div>
+                  <div className="flex gap-2 sm:gap-3">
                     <button
-                      onClick={() => setShowMarkdown(true)}
-                      disabled={selectedFilePaths.length === 0}
-                      className="whitespace-nowrap px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-[#1E1E1E] text-white text-sm font-semibold rounded-lg shadow disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/30 active:translate-y-0"
+                      onClick={handleCopy}
+                      className="inline-flex justify-center items-center rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-700 dark:text-white px-3 sm:px-6 py-3 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
+                      title="Copy to Clipboard"
                     >
-                      Pack Selected
+                      {isCopied ? (
+                        <>
+                          <Check className="w-4 h-4 sm:mr-2 text-green-500 dark:text-green-400" />
+                          <span className="hidden sm:inline">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 sm:mr-2 text-gray-500 dark:text-neutral-400" />
+                          <span className="hidden sm:inline">Copy to Clipboard</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleDownload}
+                      className="inline-flex justify-center items-center rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-700 dark:text-white px-3 sm:px-6 py-3 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
+                      title={`Download .${outputFormat === 'xml' ? 'xml' : 'md'} file`}
+                    >
+                      <Download className="w-4 h-4 sm:mr-2 text-gray-500 dark:text-neutral-400" />
+                      <span className="hidden sm:inline">Download .{outputFormat === 'xml' ? 'xml' : 'md'} file</span>
+                      <span className="sm:hidden font-mono text-xs">.{outputFormat === 'xml' ? 'xml' : 'md'}</span>
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-3 custom-scrollbar flex flex-col gap-1">
-                    {sortedRootChildren.map(child => (
-                      <FileTreeNode
-                        key={child.path}
-                        node={child}
-                        selectedFilePaths={selectedFilePaths}
-                        toggleFileSelection={toggleFileSelection}
-                        handleToggleFolder={handleToggleFolder}
-                      />
-                    ))}
+                </div>
+                <label htmlFor="markdown-output" className="sr-only">
+                  Markdown Output
+                </label>
+                <div className="relative flex-1 group">
+                  <textarea
+                    id="markdown-output"
+                    value={finalMarkdown}
+                    readOnly
+                    placeholder={`${outputFormat === 'xml' ? 'XML' : 'Markdown'} output will appear here...`}
+                    className="absolute inset-0 w-full h-full rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-[#1E1E1E] px-6 py-5 text-gray-800 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm leading-relaxed resize-none transition-colors shadow-sm"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mb-8 items-start">
+                {/* Left Column (Span 1) */}
+                <div className="col-span-1 flex flex-col gap-6">
+                  {/* Summary Card */}
+                  <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-sm">
+                    <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Info</h2>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Owner</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{repoInfo.owner}</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Repo</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{repoInfo.repoName}</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Branch</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{repoInfo.branch}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Files</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{repoInfo.totalFilesCount || fetchedFiles.length}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pack Summary Card */}
+                  <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-sm">
+                    <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Pack Summary</h2>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Selected Files</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{stats.totalFiles}</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Tokens</span>
+                        <span className="font-bold text-gray-900 dark:text-white">~{stats.totalTokens.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Size</span>
+                        <span className="font-bold text-gray-900 dark:text-white">{stats.totalSize.toLocaleString()} chars</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column (Span 2) */}
+                <div className="col-span-1 md:col-span-2 relative">
+                  <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm h-[600px] flex flex-col overflow-hidden">
+                    <div className="sticky top-0 bg-white dark:bg-[#1E1E1E] border-b border-gray-200 dark:border-gray-800 p-4 shrink-0 flex flex-col sm:flex-row justify-between items-center gap-4 z-10">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleSelectAll}
+                          className="text-xs font-medium border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-neutral-300 bg-transparent py-2 px-3 rounded-md transition-colors"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          onClick={handleDeselectAll}
+                          className="text-xs font-medium border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-neutral-300 bg-transparent py-2 px-3 rounded-md transition-colors"
+                        >
+                          Deselect All
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setShowMarkdown(true)}
+                        disabled={selectedFilePaths.length === 0}
+                        className="whitespace-nowrap px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-[#1E1E1E] text-white text-sm font-semibold rounded-lg shadow disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-500/30 active:translate-y-0"
+                      >
+                        Pack Selected
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-3 custom-scrollbar flex flex-col gap-1">
+                      {sortedRootChildren.map(child => (
+                        <FileTreeNode
+                          key={child.path}
+                          node={child}
+                          selectedFilePaths={selectedFilePaths}
+                          toggleFileSelection={toggleFileSelection}
+                          handleToggleFolder={handleToggleFolder}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )
-        ) : null}
+            )
+          ) : null}
         </div> {/* <-- ADD THIS CLOSING DIV HERE */}
       </div>
 
-      {/* Settings Modal */}
-      {isSettingsOpen && (
+      {/* Help & CLI Modal */}
+      {isHelpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
-          <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+          <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-800">
               <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Ignore Rules</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Select the files and folders you want to exclude from the pack.</p>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Help</h2>
+
               </div>
-              <button 
-                onClick={() => setIsSettingsOpen(false)}
-                title="Close settings"
-                aria-label="Close settings"
+              <button
+                onClick={() => setIsHelpOpen(false)}
+                title="Close"
                 className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-              {ignoreCategories.map((category, idx) => (
-                <div key={idx} className="space-y-3">
-                  <h3 className="font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-gray-800 pb-2">
-                    {category.category}
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {category.rules.map(rule => (
-                      <label key={rule.id} className="flex items-start space-x-3 cursor-pointer group p-2 hover:bg-gray-50 dark:hover:bg-neutral-800/50 rounded-lg transition-colors">
-                        <div className="relative flex items-center justify-center mt-0.5">
-                          <input
-                            type="checkbox"
-                            checked={rule.enabled}
-                            onChange={() => toggleIgnoreRule(category.category, rule.id)}
-                            className="peer appearance-none w-4 h-4 border border-gray-300 dark:border-neutral-600 bg-gray-50 dark:bg-neutral-800 rounded checked:bg-indigo-600 checked:border-indigo-600 focus:outline-none transition-all"
-                          />
-                          <Check className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" strokeWidth={3} />
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white transition-colors">{rule.label}</span>
-                          <span className="text-xs text-gray-500 font-mono mt-0.5">{rule.patterns.join(', ')}</span>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar text-gray-700 dark:text-gray-300">
+
+              {/* How it Works & Limits */}
+              <section>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">How it Works</h3>
+                <p className="text-sm leading-relaxed mb-3">
+                  To keep the output clean and save your context limit, it follows your .gitignore rules and automatically skips "junk" the AI doesn't need—like library dependencies (node_modules), secret keys (.env), build folders, and images.
+                </p>
+                <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-orange-800 dark:text-orange-300 mb-2">Web App Limitations:</h4>
+                  <ul className="list-disc pl-5 text-sm text-orange-700 dark:text-orange-400 space-y-1">
+                    <li>Maximum text extraction limit: <strong>5MB(for github repo)</strong> ,30MB(for local folders)</li>
+                  </ul>
+                  <p className="text-sm text-orange-800 dark:text-orange-300 mt-3 font-medium">
+                    Hitting these limits or prefer terminal? Use the CLI to bypass them.
+                  </p>
                 </div>
-              ))}
+              </section>
+              {/* CLI Usage */}
+              <section>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">CLI Usage </h3>
+
+                <div className="space-y-6">
+
+                  {/* 1. Pack Whole Codebase & Global Install */}
+                  <div>
+                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2">1. Pack the whole codebase:</p>
+                    <code className="block bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-gray-800 p-3 rounded-lg text-sm font-mono text-indigo-600 dark:text-indigo-400 select-all mb-2">
+                      npx monodoc-pack
+                    </code>
+                    <p className="text-xs text-gray-500 mb-2">Or, install it globally</p>
+                    <code className="block bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-gray-800 p-3 rounded-lg text-sm font-mono text-indigo-600 dark:text-indigo-400 select-all whitespace-pre-wrap leading-relaxed">
+                      npm install -g monodoc-pack{"\n"}monodoc-pack
+                    </code>
+                  </div>
+
+                  {/* 2. Specific Files & Folders */}
+                  <div>
+                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-1">2. Pack specific files and folders:</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Structure: npx monodoc-pack [path1] [path2] ...</p>
+                    <code className="block bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-gray-800 p-3 rounded-lg text-sm font-mono text-indigo-600 dark:text-indigo-400 select-all">
+                      npx monodoc-pack src/App.tsx src/components package.json
+                    </code>
+                  </div>
+
+                  {/* 3. Ignore specific files */}
+                  <div>
+                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-1">3. Ignore specific files or folders:</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Structure: npx monodoc-pack --ignore [path1] [path2] ...</p>
+                    <code className="block bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-gray-800 p-3 rounded-lg text-sm font-mono text-indigo-600 dark:text-indigo-400 select-all">
+                      npx monodoc-pack --ignore package-lock.json
+                    </code>
+                  </div>
+
+                  {/* 4. Pack Full in XML */}
+                  <div>
+                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2">4. Output as XML instead of Markdown:</p>
+                    <code className="block bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-gray-800 p-3 rounded-lg text-sm font-mono text-indigo-600 dark:text-indigo-400 select-all">
+                      npx monodoc-pack --xml
+                    </code>
+                  </div>
+
+                </div>
+              </section>
+
+
             </div>
 
-            <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#121212] flex justify-end gap-3">
-              <button 
-                onClick={() => setIgnoreCategories(DEFAULT_IGNORE_CATEGORIES)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-              >
-                Reset Defaults
-              </button>
-              <button 
-                onClick={() => setIsSettingsOpen(false)}
+            <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#121212] flex justify-end">
+              <button
+                onClick={() => setIsHelpOpen(false)}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
               >
-                Save & Close
+                Got it
               </button>
             </div>
           </div>
