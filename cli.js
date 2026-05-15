@@ -4,39 +4,141 @@ import path from 'path';
 import ignore from 'ignore';
 
 const BINARY_EXTENSIONS = [
-  // Images
   '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp', '.bmp', '.tiff', '.avif',
-  // Fonts
   '.ttf', '.woff', '.woff2', '.eot', '.otf',
-  // Audio/Video
   '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv', '.webm',
-  // Archives & Executables
   '.zip', '.tar', '.gz', '.tgz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib', '.class', '.jar', '.pyc', '.pyd', '.o', '.a', '.lib', '.wasm', '.bin',
-  // Documents & Ebooks
   '.pdf', '.epub', '.mobi', '.azw3', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.rtf', '.odt', '.ods', '.odp',
-  // Database / Local state
   '.sqlite', '.sqlite3', '.db', '.bak'
 ];
-const DEFAULT_IGNORES = ['.git', 'node_modules', 'dist', 'build', '.DS_Store', 'coverage', 'monodoc_output.md'];
+const DEFAULT_IGNORES = ['.git', 'node_modules', 'dist', 'build', '.DS_Store', 'coverage', 'monodoc_output.md', 'monodoc_output.xml'];
 
+// --- Formatting Helpers ---
+const stripEmptyLines = (text) => text ? text.replace(/^\s*[\r\n]/gm, '') : '';
+
+const injectLineNumbers = (text) => {
+  if (!text) return text;
+  const lines = text.split('\n');
+  const maxDigits = String(lines.length).length;
+  return lines.map((line, index) => {
+    const lineNumber = String(index + 1).padStart(maxDigits, ' ');
+    return `${lineNumber} | ${line}`;
+  }).join('\n');
+};
+
+const stripComments = (text, ext) => {
+  if (!text) return text;
+  const lowerExt = ext.toLowerCase();
+
+  try {
+    if (['.js', '.jsx', '.ts', '.tsx', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.swift', '.php', '.css'].includes(lowerExt)) {
+      // Group 1: Strings. Group 2 (Uncaptured): Comments.
+      const regex = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/.*/g;
+      return text.replace(regex, (match, stringLiteral) => stringLiteral ? match : '');
+    }
+    if (['.py', '.rb', '.sh', '.yaml', '.yml', '.dockerfile', '.pl'].includes(lowerExt)) {
+      const regex = /("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|#.*/g;
+      return text.replace(regex, (match, stringLiteral) => stringLiteral ? match : '');
+    }
+    if (['.html', '.xml', '.md', '.vue', '.svelte'].includes(lowerExt)) {
+      const regex = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|<!--[\s\S]*?-->/g;
+      return text.replace(regex, (match, stringLiteral) => stringLiteral ? match : '');
+    }
+  } catch (e) {
+    // Failsafe: if a massive minified file breaks the regex, return original text safely
+    return text;
+  }
+  return text;
+};
+
+// --- Parse Arguments ---
 const args = process.argv.slice(2);
 let customIgnores = [];
-const keywordIndex = args.findIndex(arg => arg === 'remove' || arg === '--ignore' || arg === '--exclude');
-if (keywordIndex !== -1) {
-  customIgnores = args.slice(keywordIndex + 1);
+let targetPaths = [];
+let options = { noComments: false, noEmpty: false, lineNumbers: false, xml: false };
+
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+
+  if (arg === '--ignore' || arg === '--exclude' || arg === 'remove') {
+    if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+      // Consume ONLY the next argument (split by comma for multiple)
+      customIgnores.push(...args[++i].split(','));
+    }
+  } else if (arg.startsWith('--ignore=')) {
+    customIgnores.push(...arg.split('=')[1].split(','));
+  } else if (arg === '--no-comments') {
+    options.noComments = true;
+  } else if (arg === '--no-empty') {
+    options.noEmpty = true;
+  } else if (arg === '--line-numbers') {
+    options.lineNumbers = true;
+  } else if (arg === '--xml') {
+    options.xml = true;
+  } else if (!arg.startsWith('-')) {
+    targetPaths.push(arg); // Specific files or folders to pack
+  }
 }
 
 const cwd = process.cwd();
 const ig = ignore().add(DEFAULT_IGNORES);
 
 if (fs.existsSync(path.join(cwd, '.gitignore'))) {
-  ig.add(fs.readFileSync(path.join(cwd, '.gitignore'), 'utf8'));
+  try { ig.add(fs.readFileSync(path.join(cwd, '.gitignore'), 'utf8')); } catch (e) { }
 }
 if (customIgnores.length > 0) {
-  console.log(` Excluding custom files/patterns: ${customIgnores.join(', ')}`);
+  console.log(`Excluding custom patterns: ${customIgnores.join(', ')}`);
   ig.add(customIgnores);
 }
 
+// Default to current directory if no specific files provided
+if (targetPaths.length === 0) targetPaths.push('.');
+
+// --- File Scanning ---
+const allPaths = [];
+const filesToPack = [];
+
+function walk(targetPath) {
+  const absolutePath = path.resolve(cwd, targetPath);
+  if (!fs.existsSync(absolutePath)) {
+    console.log(`Warning: Could not find path -> ${targetPath}`);
+    return;
+  }
+
+  const stat = fs.statSync(absolutePath);
+  const relPath = path.relative(cwd, absolutePath).replace(/\\/g, '/');
+
+  // Enforce ignore rules
+  if (relPath && ig.ignores(relPath)) return;
+
+  if (stat.isDirectory()) {
+    const list = fs.readdirSync(absolutePath);
+    for (const file of list) {
+      walk(path.join(absolutePath, file));
+    }
+  } else {
+    // Fallback to targetPath if relPath is empty (rare edge case)
+    const finalPath = relPath || targetPath;
+    allPaths.push(finalPath);
+
+    const ext = path.extname(absolutePath).toLowerCase();
+    if (!BINARY_EXTENSIONS.includes(ext)) {
+      filesToPack.push(finalPath);
+    }
+  }
+}
+
+console.log('MonoDoc is scanning your files...');
+for (const target of targetPaths) walk(target);
+
+if (filesToPack.length === 0) {
+  console.log('No text files found to pack. Check your paths and ignore rules.');
+  process.exit(0);
+}
+
+console.log(`Packing ${filesToPack.length} files...`);
+
+// --- Generate Output ---
 function generateDirectoryTree(paths) {
   const tree = {};
   for (const p of paths) {
@@ -54,69 +156,64 @@ function generateDirectoryTree(paths) {
       const key = keys[i];
       const isLast = i === keys.length - 1;
       result += prefix + (isLast ? '└── ' : '├── ') + key + '\n';
-      const childPrefix = prefix + (isLast ? '    ' : '│   ');
-      buildTreeString(node[key], childPrefix);
+      buildTreeString(node[key], prefix + (isLast ? '    ' : '│   '));
     }
   };
   buildTreeString(tree);
   return result;
 }
 
-const allPaths = [];
-const filesToPack = [];
+const notesBlock = `<notes>
+- Some files may have been excluded based on .gitignore rules and monodoc's configuration
+- Binary files are not included in this packed representation.
+</notes>\n\n`;
 
-function walk(dir) {
-  const list = fs.readdirSync(dir);
-  for (const file of list) {
-    const fullPath = path.join(dir, file);
-    const relPath = path.relative(cwd, fullPath).replace(/\\/g, '/');
+let output = '';
+const outputFile = options.xml ? 'monodoc_output.xml' : 'monodoc_output.md';
 
-    // 1. Skip if ignored by .gitignore
-    if (ig.ignores(relPath)) continue;
+if (options.xml) {
+  output += `<?xml version="1.0" encoding="UTF-8"?>\n<repository>\n`;
+  output += notesBlock;
+  output += `  <directory_structure>\n<![CDATA[\n${generateDirectoryTree(allPaths)}\n]]>\n  </directory_structure>\n`;
+  output += `  <files>\n`;
 
-    const stat = fs.statSync(fullPath);
-    if (stat.isDirectory()) {
-      walk(fullPath);
-    } else {
-      // 2. Add to allPaths for the Directory Tree
-      allPaths.push(relPath);
+  for (const file of filesToPack) {
+    let content = fs.readFileSync(path.join(cwd, file), 'utf8');
+    const ext = path.extname(file);
+    if (options.noComments) content = stripComments(content, ext);
+    if (options.noEmpty) content = stripEmptyLines(content);
+    if (options.lineNumbers) content = injectLineNumbers(content);
 
-      // 3. Only add to filesToPack if it is NOT a binary file
-      const ext = path.extname(file).toLowerCase();
-      if (!BINARY_EXTENSIONS.includes(ext)) {
-        filesToPack.push(relPath);
-      }
-    }
+    const safeContent = content.replace(/]]>/g, ']]]]><![CDATA[>');
+    output += `    <file path="${file}">\n<![CDATA[\n${safeContent}\n]]>\n    </file>\n`;
+  }
+  output += `  </files>\n</repository>\n`;
+
+} else {
+  output += notesBlock;
+  output += '## Directory Structure\n\n```text\n';
+  output += generateDirectoryTree(allPaths);
+  output += '```\n\n';
+
+  const extensionToLanguage = {
+    '.js': 'javascript', '.jsx': 'javascript', '.ts': 'typescript', '.tsx': 'typescript',
+    '.py': 'python', '.rs': 'rust', '.go': 'go', '.java': 'java', '.cpp': 'cpp',
+    '.html': 'html', '.css': 'css', '.json': 'json', '.md': 'markdown', '.sh': 'bash'
+  };
+
+  for (const file of filesToPack) {
+    let content = fs.readFileSync(path.join(cwd, file), 'utf8');
+    const extMatch = file.match(/\.[^.]+$/);
+    const ext = extMatch ? extMatch[0].toLowerCase() : '';
+    const lang = extensionToLanguage[ext] || ext.replace('.', '');
+
+    if (options.noComments) content = stripComments(content, ext);
+    if (options.noEmpty) content = stripEmptyLines(content);
+    if (options.lineNumbers) content = injectLineNumbers(content);
+
+    output += `### ${file}\n\n\`\`\`${lang}\n${content}\n\`\`\`\n\n`;
   }
 }
 
-console.log('MonoDoc is scanning your directory...');
-walk(cwd);
-
-if (filesToPack.length === 0) {
-  console.log('No text files found to pack.');
-  process.exit(0);
-}
-
-console.log(`Packing ${filesToPack.length} files...`);
-
-// Inject the notes block at the top
-let output = `<notes>
-- Some files may have been excluded based on .gitignore rules and monodoc's configuration
-- Binary files are not included in this packed representation. Please refer to the directory structure for a complete list of file paths, including binary files
-</notes>\n\n`;
-
-// Generate the tree using ALL non-ignored paths (including binary files)
-output += '## Directory Structure\n\n```text\n';
-output += generateDirectoryTree(allPaths);
-output += '```\n\n';
-
-for (const file of filesToPack) {
-  const content = fs.readFileSync(path.join(cwd, file), 'utf8');
-  const extMatch = file.match(/\.[^.]+$/);
-  const ext = extMatch ? extMatch[0].toLowerCase().replace('.', '') : '';
-  output += `### ${file}\n\n\`\`\`${ext}\n${content}\n\`\`\`\n\n`;
-}
-
-fs.writeFileSync('monodoc_output.md', output);
-console.log('Success! Created \x1b[32mmonodoc_output.md\x1b[0m in your current folder.');
+fs.writeFileSync(outputFile, output);
+console.log(`Success! Created \x1b[32m${outputFile}\x1b[0m in your current folder.`);

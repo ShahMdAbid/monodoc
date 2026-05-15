@@ -27,27 +27,34 @@ const stripComments = (text: string, ext: string): string => {
   if (!text) return text;
   const lowerExt = ext.toLowerCase();
 
-  // 1. C-Style (JS, TS, Java, C, C++, C#, Go, Rust, Swift, PHP)
-  if (['.js', '.jsx', '.ts', '.tsx', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.swift', '.php'].includes(lowerExt)) {
-    // Removes /* ... */ and // ... but smartly IGNORES http:// and https://
-    return text.replace(/\/\*[\s\S]*?\*\/|(?<!https?:|http:)\/\/.*/g, '');
+  // 1. C-Style (JS, TS, Java, C, C++, C#, Go, Rust, Swift, PHP, CSS)
+  if (['.js', '.jsx', '.ts', '.tsx', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.swift', '.php', '.css'].includes(lowerExt)) {
+    // Matches: 1. Double quotes | 2. Single quotes | 3. Backticks | 4. Block comments | 5. Line comments
+    const regex = /("(?:[^"\\]|\\.)*")|('(?:[^'\\]|\\.)*')|(`(?:[^`\\]|\\.)*`)|(\/\*[\s\S]*?\*\/)|(\/\/.*)/g;
+    return text.replace(regex, (match, isDouble, isSingle, isBacktick, isBlock, isLine) => {
+      if (isBlock || isLine) return ''; // Delete comments
+      return match; // Preserve strings safely
+    });
   }
 
   // 2. Hash-Style (Python, Ruby, Shell, YAML, Dockerfile, Perl)
   if (['.py', '.rb', '.sh', '.yaml', '.yml', '.dockerfile', '.pl'].includes(lowerExt)) {
-    // Removes # comments
-    return text.replace(/(?<!['"]\s*)#.*/g, ''); 
+    // Matches: 1. Triple Double Quotes | 2. Triple Single Quotes | 3. Double | 4. Single | 5. Hash comments
+    const regex = /("""[\s\S]*?""")|('''[\s\S]*?''')|("(?:[^"\\]|\\.)*")|('(?:[^'\\]|\\.)*')|(#.*)/g;
+    return text.replace(regex, (match, isTripDouble, isTripSingle, isDouble, isSingle, isHash) => {
+      if (isHash) return ''; // Delete comments
+      return match; // Preserve strings safely
+    });
   }
 
   // 3. HTML / XML / Markdown / Vue / Svelte
   if (['.html', '.xml', '.md', '.vue', '.svelte'].includes(lowerExt)) {
-    // Removes <!-- ... -->
-    return text.replace(/<!--[\s\S]*?-->/g, '');
-  }
-
-  // 4. CSS
-  if (['.css'].includes(lowerExt)) {
-    return text.replace(/\/\*[\s\S]*?\*\//g, '');
+    // Matches: 1. Double quotes | 2. Single quotes | 3. HTML comments
+    const regex = /("(?:[^"\\]|\\.)*")|('(?:[^'\\]|\\.)*')|(<!--[\s\S]*?-->)/g;
+    return text.replace(regex, (match, isDouble, isSingle, isHtmlComment) => {
+      if (isHtmlComment) return ''; // Delete comments
+      return match; // Preserve attributes and strings safely
+    });
   }
 
   return text; // Default: return unmodified if unknown language
